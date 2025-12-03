@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GoCD Pipeline Configuration for DevTools Container
+
+  This pipeline configuration should be added to your GoCD server's cruise-config.xml
+  or configured through the GoCD UI.
+
+  Pipeline Stages:
+  1. Build - Builds the Docker image
+  2. Security-Scan - Runs Trivy security scanner
+  3. Verify - Tests the built image
+-->
+
+<pipeline name="devtools-container">
+  <materials>
+    <git url="https://github.com/your-org/devtools-container.git" dest="devtools" materialName="devtools-repo">
+      <filter>
+        <ignore pattern="**/*.md" />
+        <ignore pattern=".gitignore" />
+      </filter>
+    </git>
+  </materials>
+
+  <stage name="Build" cleanWorkingDir="false">
+    <jobs>
+      <job name="build-image">
+        <tasks>
+          <exec command="bash" workingdir="devtools">
+            <arg>-c</arg>
+            <arg>docker build -t devtools:${GO_PIPELINE_LABEL} .</arg>
+            <runif status="passed" />
+          </exec>
+          <exec command="bash" workingdir="devtools">
+            <arg>-c</arg>
+            <arg>docker tag devtools:${GO_PIPELINE_LABEL} devtools:latest</arg>
+            <runif status="passed" />
+          </exec>
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>docker images | grep devtools</arg>
+            <runif status="passed" />
+          </exec>
+        </tasks>
+        <artifacts>
+          <artifact type="build" src="devtools/Dockerfile" dest="build-artifacts" />
+        </artifacts>
+      </job>
+    </jobs>
+  </stage>
+
+  <stage name="Security-Scan" cleanWorkingDir="false">
+    <jobs>
+      <job name="trivy-scan">
+        <tasks>
+          <!-- Install Trivy if not already available -->
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>which trivy || (curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin)</arg>
+            <runif status="passed" />
+          </exec>
+
+          <!-- Run Trivy scan for vulnerabilities -->
+          <exec command="trivy">
+            <arg>image</arg>
+            <arg>--severity</arg>
+            <arg>HIGH,CRITICAL</arg>
+            <arg>--exit-code</arg>
+            <arg>0</arg>
+            <arg>--format</arg>
+            <arg>json</arg>
+            <arg>--output</arg>
+            <arg>trivy-report.json</arg>
+            <arg>devtools:${GO_PIPELINE_LABEL}</arg>
+            <runif status="passed" />
+          </exec>
+
+          <!-- Generate human-readable report -->
+          <exec command="trivy">
+            <arg>image</arg>
+            <arg>--severity</arg>
+            <arg>HIGH,CRITICAL</arg>
+            <arg>--format</arg>
+            <arg>table</arg>
+            <arg>--output</arg>
+            <arg>trivy-report.txt</arg>
+            <arg>devtools:${GO_PIPELINE_LABEL}</arg>
+            <runif status="passed" />
+          </exec>
+
+          <!-- Display summary -->
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>echo "=== Security Scan Results ===" &amp;&amp; cat trivy-report.txt</arg>
+            <runif status="passed" />
+          </exec>
+        </tasks>
+        <artifacts>
+          <artifact type="build" src="trivy-report.json" dest="security-reports" />
+          <artifact type="build" src="trivy-report.txt" dest="security-reports" />
+        </artifacts>
+      </job>
+    </jobs>
+  </stage>
+
+  <stage name="Verify" cleanWorkingDir="false">
+    <jobs>
+      <job name="smoke-test">
+        <tasks>
+          <!-- Test 1: Verify container starts -->
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>docker run --rm devtools:${GO_PIPELINE_LABEL} bash -c 'echo "Container started successfully"'</arg>
+            <runif status="passed" />
+          </exec>
+
+          <!-- Test 2: Verify asdf is installed -->
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>docker run --rm devtools:${GO_PIPELINE_LABEL} bash -c 'asdf --version'</arg>
+            <runif status="passed" />
+          </exec>
+
+          <!-- Test 3: Verify critical tools are present -->
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>docker run --rm devtools:${GO_PIPELINE_LABEL} bash -c 'terraform version &amp;&amp; python --version &amp;&amp; node --version &amp;&amp; kubectl version --client &amp;&amp; helm version'</arg>
+            <runif status="passed" />
+          </exec>
+
+          <!-- Test 4: Verify Python packages -->
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>docker run --rm devtools:${GO_PIPELINE_LABEL} bash -c 'ansible --version &amp;&amp; aws --version'</arg>
+            <runif status="passed" />
+          </exec>
+
+          <!-- Test 5: Check image size -->
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>echo "=== Image Size ===" &amp;&amp; docker images devtools:${GO_PIPELINE_LABEL} --format "{{.Repository}}:{{.Tag}} - {{.Size}}"</arg>
+            <runif status="passed" />
+          </exec>
+        </tasks>
+      </job>
+    </jobs>
+  </stage>
+
+  <stage name="Cleanup" cleanWorkingDir="false">
+    <approval type="manual">
+      <authorization>
+        <role>devops</role>
+      </authorization>
+    </approval>
+    <jobs>
+      <job name="cleanup-old-images">
+        <tasks>
+          <!-- Remove old devtools images (keep last 5) -->
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>docker images devtools --format "{{.ID}}" | tail -n +6 | xargs -r docker rmi -f || true</arg>
+            <runif status="any" />
+          </exec>
+
+          <!-- Clean up dangling images -->
+          <exec command="bash">
+            <arg>-c</arg>
+            <arg>docker image prune -f</arg>
+            <runif status="any" />
+          </exec>
+        </tasks>
+      </job>
+    </jobs>
+  </stage>
+</pipeline>

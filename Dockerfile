@@ -1,0 +1,304 @@
+# =============================================================================
+# Secure DevOps Tools Container with asdf Version Management
+# =============================================================================
+# Base: Ubuntu 24.04 LTS (Noble Numbat) - minimal and security-focused
+# Purpose: Locked-down container for infrastructure/DevOps tooling
+# =============================================================================
+
+FROM ubuntu:24.04 AS base
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Labels for container metadata
+LABEL maintainer="DevOps Team"
+LABEL description="Secure DevOps tools container with asdf version management"
+LABEL version="1.0.0"
+
+# =============================================================================
+# Security: Create non-root user early
+# =============================================================================
+ARG USERNAME=tooluser
+ARG USER_UID=1000
+ARG USER_GID=${USER_UID}
+
+RUN set -e; \
+    # Get existing user at UID if exists \
+    EXISTING_USER=$(getent passwd ${USER_UID} | cut -d: -f1 || echo ""); \
+    \
+    # If user with this UID exists and it's not our username, delete it \
+    if [ -n "$EXISTING_USER" ] && [ "$EXISTING_USER" != "${USERNAME}" ]; then \
+        userdel -r "$EXISTING_USER" 2>/dev/null || true; \
+    fi; \
+    \
+    # Ensure group exists (check AFTER potential user deletion) \
+    if ! getent group ${USER_GID} >/dev/null 2>&1; then \
+        groupadd --gid ${USER_GID} ${USERNAME}; \
+    fi; \
+    \
+    # Create user if it doesn't exist \
+    if ! id -u ${USERNAME} >/dev/null 2>&1; then \
+        useradd --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME}; \
+    fi; \
+    \
+    mkdir -p /home/${USERNAME}/.local/bin; \
+    chown -R ${USERNAME}:${USER_GID} /home/${USERNAME}
+
+# =============================================================================
+# Install System Dependencies
+# =============================================================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Essential build tools
+    build-essential \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    # SSL/TLS and crypto
+    libssl-dev \
+    ca-certificates \
+    # Compression
+    zlib1g-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libzstd-dev \
+    # Python dependencies
+    libffi-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    libncursesw5-dev \
+    libxml2-dev \
+    libxmlsec1-dev \
+    tk-dev \
+    # Version control
+    git \
+    # Network tools
+    curl \
+    wget \
+    # Utilities
+    unzip \
+    jq \
+    xz-utils \
+    # Shell
+    bash \
+    bash-completion \
+    # SSH client (for git/ansible)
+    openssh-client \
+    # Required for some asdf plugins
+    dirmngr \
+    gpg \
+    gpg-agent \
+    gawk \
+    # Cleanup
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# =============================================================================
+# Install yq (YAML processor) - system-wide
+# =============================================================================
+ARG YQ_VERSION=v4.44.3
+RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+    -o /usr/local/bin/yq \
+    && chmod +x /usr/local/bin/yq
+
+# =============================================================================
+# Switch to non-root user for remaining setup
+# =============================================================================
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}
+
+# =============================================================================
+# Install asdf Version Manager
+# =============================================================================
+ARG ASDF_VERSION=v0.15.0
+RUN git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch ${ASDF_VERSION}
+
+# Configure shell for asdf
+RUN echo '. "$HOME/.asdf/asdf.sh"' >> ~/.bashrc \
+    && echo '. "$HOME/.asdf/completions/asdf.bash"' >> ~/.bashrc
+
+# Set up asdf environment for build
+ENV ASDF_DIR="/home/${USERNAME}/.asdf"
+ENV PATH="${ASDF_DIR}/bin:${ASDF_DIR}/shims:${PATH}"
+
+# =============================================================================
+# Tool Version Configuration
+# =============================================================================
+# Define versions as build arguments for easy updates
+# Latest versions
+ARG TERRAFORM_LATEST=1.13.0
+ARG TERRAFORM_PREV=1.12.2
+
+ARG PYTHON_LATEST=3.13.7
+ARG PYTHON_PREV=3.12.8
+
+ARG NODEJS_LATEST=22.11.0
+ARG NODEJS_PREV=20.18.0
+
+ARG RUST_LATEST=1.91.1
+ARG RUST_PREV=1.90.0
+
+ARG KUBECTL_LATEST=1.34.0
+ARG KUBECTL_PREV=1.33.0
+
+ARG HELM_LATEST=3.19.2
+ARG HELM_PREV=3.18.3
+
+ARG GOLANG_LATEST=1.23.4
+ARG GOLANG_PREV=1.22.10
+
+ARG PACKER_LATEST=1.11.2
+ARG PACKER_PREV=1.10.3
+
+# =============================================================================
+# Install asdf Plugins
+# =============================================================================
+RUN asdf plugin add terraform https://github.com/asdf-community/asdf-hashicorp.git \
+    && asdf plugin add python https://github.com/asdf-community/asdf-python.git \
+    && asdf plugin add nodejs https://github.com/asdf-vm/asdf-nodejs.git \
+    && asdf plugin add rust https://github.com/asdf-community/asdf-rust.git \
+    && asdf plugin add kubectl https://github.com/asdf-community/asdf-kubectl.git \
+    && asdf plugin add helm https://github.com/Antiarchitect/asdf-helm.git \
+    && asdf plugin add golang https://github.com/asdf-community/asdf-golang.git \
+    && asdf plugin add packer https://github.com/asdf-community/asdf-hashicorp.git
+
+# =============================================================================
+# Install Tool Versions
+# =============================================================================
+
+# Terraform
+RUN asdf install terraform ${TERRAFORM_LATEST} \
+    && asdf install terraform ${TERRAFORM_PREV} \
+    && asdf global terraform ${TERRAFORM_LATEST}
+
+# Python (takes a while to compile)
+RUN asdf install python ${PYTHON_LATEST} \
+    && asdf install python ${PYTHON_PREV} \
+    && asdf global python ${PYTHON_LATEST}
+
+# Node.js
+RUN asdf install nodejs ${NODEJS_LATEST} \
+    && asdf install nodejs ${NODEJS_PREV} \
+    && asdf global nodejs ${NODEJS_LATEST}
+
+# Rust
+RUN asdf install rust ${RUST_LATEST} \
+    && asdf install rust ${RUST_PREV} \
+    && asdf global rust ${RUST_LATEST}
+
+# kubectl
+RUN asdf install kubectl ${KUBECTL_LATEST} \
+    && asdf install kubectl ${KUBECTL_PREV} \
+    && asdf global kubectl ${KUBECTL_LATEST}
+
+# Helm
+RUN asdf install helm ${HELM_LATEST} \
+    && asdf install helm ${HELM_PREV} \
+    && asdf global helm ${HELM_LATEST}
+
+# Go
+RUN asdf install golang ${GOLANG_LATEST} \
+    && asdf install golang ${GOLANG_PREV} \
+    && asdf global golang ${GOLANG_LATEST}
+
+# Packer
+RUN asdf install packer ${PACKER_LATEST} \
+    && asdf install packer ${PACKER_PREV} \
+    && asdf global packer ${PACKER_LATEST}
+
+# =============================================================================
+# Install Python-based Tools (Ansible, AWS CLI, etc.)
+# =============================================================================
+# Ensure pip is up to date and install tools
+RUN pip install --upgrade pip --no-cache-dir \
+    && pip install --no-cache-dir \
+    ansible-core==2.18.1 \
+    ansible-lint \
+    awscli \
+    azure-cli \
+    boto3 \
+    pre-commit \
+    yamllint \
+    checkov
+
+# =============================================================================
+# Install Node.js-based Tools
+# =============================================================================
+RUN npm install -g --no-fund --no-audit \
+    npm@latest \
+    yarn \
+    typescript \
+    cdktf-cli
+
+# =============================================================================
+# Create .tool-versions file for project-level version management
+# =============================================================================
+RUN echo "terraform ${TERRAFORM_LATEST}" > ~/.tool-versions \
+    && echo "python ${PYTHON_LATEST}" >> ~/.tool-versions \
+    && echo "nodejs ${NODEJS_LATEST}" >> ~/.tool-versions \
+    && echo "rust ${RUST_LATEST}" >> ~/.tool-versions \
+    && echo "kubectl ${KUBECTL_LATEST}" >> ~/.tool-versions \
+    && echo "helm ${HELM_LATEST}" >> ~/.tool-versions \
+    && echo "golang ${GOLANG_LATEST}" >> ~/.tool-versions \
+    && echo "packer ${PACKER_LATEST}" >> ~/.tool-versions
+
+# =============================================================================
+# Security Hardening
+# =============================================================================
+# Create workspace directory
+RUN mkdir -p /home/${USERNAME}/workspace
+
+# Set restrictive umask
+RUN echo "umask 027" >> ~/.bashrc
+
+# =============================================================================
+# Environment Configuration
+# =============================================================================
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV EDITOR=vi
+ENV TERM=xterm-256color
+
+# Helpful aliases
+RUN echo 'alias ll="ls -alF"' >> ~/.bashrc \
+    && echo 'alias tf="terraform"' >> ~/.bashrc \
+    && echo 'alias k="kubectl"' >> ~/.bashrc \
+    && echo 'alias h="helm"' >> ~/.bashrc \
+    && echo 'alias python="python3"' >> ~/.bashrc
+
+# =============================================================================
+# Health Check
+# =============================================================================
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD asdf current || exit 1
+
+# =============================================================================
+# Default Working Directory and Command
+# =============================================================================
+WORKDIR /home/${USERNAME}/workspace
+
+# Default to bash shell
+CMD ["/bin/bash"]
+
+# =============================================================================
+# Build Instructions:
+# =============================================================================
+# Build:
+#   docker build -t devtools:latest .
+#
+# Run interactively:
+#   docker run -it --rm -v $(pwd):/home/tooluser/workspace devtools:latest
+#
+# Run with AWS credentials:
+#   docker run -it --rm \
+#     -v $(pwd):/home/tooluser/workspace \
+#     -v ~/.aws:/home/tooluser/.aws:ro \
+#     -e AWS_PROFILE=default \
+#     devtools:latest
+#
+# Run with Kubernetes config:
+#   docker run -it --rm \
+#     -v $(pwd):/home/tooluser/workspace \
+#     -v ~/.kube:/home/tooluser/.kube:ro \
+#     devtools:latest
+# =============================================================================

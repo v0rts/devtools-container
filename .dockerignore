@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Docker files (not needed in context)
+docker-compose*.yml
+.dockerignore
+
+# Scripts
+*.sh
+
+# IDE/Editor
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Workspace (user files)
+workspace/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp

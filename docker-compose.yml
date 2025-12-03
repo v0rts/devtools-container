@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  devtools:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Customize versions at build time if needed
+        TERRAFORM_LATEST: "1.13.0"
+        TERRAFORM_PREV: "1.12.2"
+        PYTHON_LATEST: "3.13.7"
+        PYTHON_PREV: "3.12.8"
+        NODEJS_LATEST: "22.11.0"
+        NODEJS_PREV: "20.18.0"
+        RUST_LATEST: "1.91.1"
+        RUST_PREV: "1.90.0"
+        KUBECTL_LATEST: "1.34.0"
+        KUBECTL_PREV: "1.33.0"
+        HELM_LATEST: "3.19.2"
+        HELM_PREV: "3.18.3"
+        GOLANG_LATEST: "1.23.4"
+        GOLANG_PREV: "1.22.10"
+    image: devtools:latest
+    container_name: devtools
+    hostname: devtools
+    stdin_open: true
+    tty: true
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    
+    # Mount points
+    volumes:
+      # Your project workspace
+      - ./workspace:/home/tooluser/workspace
+      
+      # AWS credentials (read-only)
+      - ~/.aws:/home/tooluser/.aws:ro
+      
+      # Kubernetes config (read-only)
+      - ~/.kube:/home/tooluser/.kube:ro
+      
+      # SSH keys for git operations (read-only)
+      - ~/.ssh:/home/tooluser/.ssh:ro
+      
+      # Git config
+      - ~/.gitconfig:/home/tooluser/.gitconfig:ro
+      
+      # Persist asdf shims and tool data between runs
+      - devtools-asdf:/home/tooluser/.asdf
+      
+      # Persist pip cache
+      - devtools-pip-cache:/home/tooluser/.cache/pip
+      
+      # Persist npm cache
+      - devtools-npm-cache:/home/tooluser/.npm
+    
+    # Environment variables
+    environment:
+      - AWS_PROFILE=${AWS_PROFILE:-default}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - KUBECONFIG=/home/tooluser/.kube/config
+      - TF_PLUGIN_CACHE_DIR=/home/tooluser/.terraform.d/plugin-cache
+      - ANSIBLE_HOST_KEY_CHECKING=False
+    
+    # Network mode
+    network_mode: bridge
+    
+    working_dir: /home/tooluser/workspace
+
+volumes:
+  devtools-asdf:
+  devtools-pip-cache:
+  devtools-npm-cache:

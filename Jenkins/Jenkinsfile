@@ -1,0 +1,476 @@
+/**
+ * Jenkinsfile for DevTools Container Pipeline
+ *
+ * This declarative pipeline builds, scans, tests, and publishes
+ * the secure DevOps tools container.
+ */
+
+pipeline {
+    agent {
+        label 'docker'
+    }
+
+    options {
+        // Enable timestamps in console output
+        timestamps()
+
+        // Enable ANSI color output
+        ansiColor('xterm')
+
+        // Build timeout
+        timeout(time: 60, unit: 'MINUTES')
+
+        // Disable concurrent builds
+        disableConcurrentBuilds()
+
+        // Keep build logs
+        buildDiscarder(logRotator(
+            numToKeepStr: '30',
+            daysToKeepStr: '90',
+            artifactNumToKeepStr: '10'
+        ))
+    }
+
+    environment {
+        // Docker configuration
+        DOCKER_REGISTRY = "${params.DOCKER_REGISTRY ?: 'docker.io'}"
+        IMAGE_NAME = 'devtools'
+        IMAGE_TAG = "${env.GIT_BRANCH.replaceAll('/', '-')}-${env.BUILD_NUMBER}"
+
+        // Build information
+        BUILD_DATE = sh(script: "date -u +'%Y-%m-%dT%H:%M:%SZ'", returnStdout: true).trim()
+        GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+
+        // Trivy configuration
+        TRIVY_CACHE_DIR = "${WORKSPACE}/.trivy-cache"
+    }
+
+    parameters {
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Skip verification tests'
+        )
+        booleanParam(
+            name: 'SKIP_SECURITY_SCAN',
+            defaultValue: false,
+            description: 'Skip security scanning'
+        )
+        booleanParam(
+            name: 'PUSH_IMAGE',
+            defaultValue: true,
+            description: 'Push image to registry'
+        )
+        choice(
+            name: 'LOG_LEVEL',
+            choices: ['INFO', 'DEBUG', 'WARN'],
+            description: 'Build log level'
+        )
+    }
+
+    stages {
+        stage('Preparation') {
+            steps {
+                script {
+                    echo "========================================"
+                    echo "Building DevTools Container"
+                    echo "========================================"
+                    echo "Branch: ${env.GIT_BRANCH}"
+                    echo "Commit: ${env.GIT_COMMIT_SHORT}"
+                    echo "Build: ${env.BUILD_NUMBER}"
+                    echo "Image Tag: ${env.IMAGE_TAG}"
+                    echo "========================================"
+                }
+
+                // Clean workspace
+                cleanWs(
+                    deleteDirs: true,
+                    patterns: [
+                        [pattern: '.trivy-cache', type: 'EXCLUDE']
+                    ]
+                )
+
+                // Checkout code
+                checkout scm
+
+                // Verify Docker is available
+                sh 'docker --version'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "Building Docker image: ${IMAGE_NAME}:${IMAGE_TAG}"
+
+                    // Build with BuildKit for better caching
+                    sh """
+                        DOCKER_BUILDKIT=1 docker build \\
+                            --tag ${IMAGE_NAME}:${IMAGE_TAG} \\
+                            --tag ${IMAGE_NAME}:latest \\
+                            --label "build.number=${env.BUILD_NUMBER}" \\
+                            --label "build.date=${env.BUILD_DATE}" \\
+                            --label "git.commit=${env.GIT_COMMIT_SHORT}" \\
+                            --label "git.branch=${env.GIT_BRANCH}" \\
+                            --build-arg BUILDKIT_INLINE_CACHE=1 \\
+                            .
+                    """
+
+                    // List built images
+                    sh "docker images | grep ${IMAGE_NAME}"
+                }
+            }
+
+            post {
+                success {
+                    echo "✓ Docker image built successfully"
+                }
+                failure {
+                    echo "✗ Docker image build failed"
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            when {
+                expression { return !params.SKIP_SECURITY_SCAN }
+            }
+
+            steps {
+                script {
+                    echo "Running Trivy security scan..."
+
+                    // Ensure Trivy is installed
+                    sh """
+                        if ! command -v trivy &> /dev/null; then
+                            echo "Installing Trivy..."
+                            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | \\
+                                sh -s -- -b /usr/local/bin
+                        fi
+                        trivy --version
+                    """
+
+                    // Update Trivy database
+                    sh "trivy image --download-db-only"
+
+                    // Run security scan (JSON format)
+                    sh """
+                        trivy image \\
+                            --severity HIGH,CRITICAL \\
+                            --format json \\
+                            --output trivy-report.json \\
+                            --no-progress \\
+                            ${IMAGE_NAME}:${IMAGE_TAG}
+                    """
+
+                    // Run security scan (table format for console)
+                    sh """
+                        trivy image \\
+                            --severity HIGH,CRITICAL,MEDIUM \\
+                            --format table \\
+                            --no-progress \\
+                            ${IMAGE_NAME}:${IMAGE_TAG}
+                    """
+
+                    // Generate HTML report
+                    sh """
+                        trivy image \\
+                            --severity HIGH,CRITICAL,MEDIUM,LOW \\
+                            --format template \\
+                            --template "@/usr/local/share/trivy/templates/html.tpl" \\
+                            --output trivy-report.html \\
+                            --no-progress \\
+                            ${IMAGE_NAME}:${IMAGE_TAG} || true
+                    """
+                }
+            }
+
+            post {
+                always {
+                    // Archive security reports
+                    archiveArtifacts artifacts: 'trivy-report.*',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+
+                    // Publish HTML report
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: '.',
+                        reportFiles: 'trivy-report.html',
+                        reportName: 'Trivy Security Report'
+                    ])
+                }
+                success {
+                    echo "✓ Security scan completed"
+                }
+                failure {
+                    echo "✗ Security scan found critical vulnerabilities"
+                }
+            }
+        }
+
+        stage('Verify Image') {
+            when {
+                expression { return !params.SKIP_TESTS }
+            }
+
+            parallel {
+                stage('Container Startup Test') {
+                    steps {
+                        script {
+                            echo "Testing container startup..."
+                            sh """
+                                docker run --rm ${IMAGE_NAME}:${IMAGE_TAG} \\
+                                    bash -c 'echo "Container started successfully"'
+                            """
+                        }
+                    }
+                }
+
+                stage('Tool Verification') {
+                    steps {
+                        script {
+                            echo "Verifying installed tools..."
+
+                            // Test asdf
+                            sh """
+                                docker run --rm ${IMAGE_NAME}:${IMAGE_TAG} \\
+                                    bash -c 'asdf --version'
+                            """
+
+                            // Test DevOps tools
+                            sh """
+                                docker run --rm ${IMAGE_NAME}:${IMAGE_TAG} \\
+                                    bash -c 'terraform version && \\
+                                             python --version && \\
+                                             node --version && \\
+                                             kubectl version --client && \\
+                                             helm version && \\
+                                             go version && \\
+                                             rustc --version'
+                            """
+
+                            // Test Python packages
+                            sh """
+                                docker run --rm ${IMAGE_NAME}:${IMAGE_TAG} \\
+                                    bash -c 'ansible --version && \\
+                                             aws --version'
+                            """
+                        }
+                    }
+                }
+
+                stage('Image Size Check') {
+                    steps {
+                        script {
+                            def imageSize = sh(
+                                script: "docker images ${IMAGE_NAME}:${IMAGE_TAG} --format '{{.Size}}'",
+                                returnStdout: true
+                            ).trim()
+
+                            echo "Image size: ${imageSize}"
+
+                            // Warn if image is too large (> 5GB)
+                            def sizeMB = sh(
+                                script: "docker images ${IMAGE_NAME}:${IMAGE_TAG} --format '{{.Size}}' | sed 's/GB/000/;s/MB//'",
+                                returnStdout: true
+                            ).trim().toFloat()
+
+                            if (sizeMB > 5000) {
+                                echo "⚠ Warning: Image size exceeds 5GB"
+                            }
+                        }
+                    }
+                }
+            }
+
+            post {
+                success {
+                    echo "✓ All verification tests passed"
+                }
+                failure {
+                    echo "✗ Verification tests failed"
+                }
+            }
+        }
+
+        stage('Generate Reports') {
+            steps {
+                script {
+                    echo "Generating build reports..."
+
+                    // Create versions report
+                    sh """
+                        docker run --rm ${IMAGE_NAME}:${IMAGE_TAG} \\
+                            bash -c 'asdf current' > tool-versions.txt
+                    """
+
+                    // Create image inspection report
+                    sh """
+                        docker inspect ${IMAGE_NAME}:${IMAGE_TAG} > image-inspect.json
+                        docker history ${IMAGE_NAME}:${IMAGE_TAG} > image-history.txt
+                    """
+                }
+            }
+
+            post {
+                always {
+                    archiveArtifacts artifacts: '*.txt,*.json',
+                        allowEmptyArchive: true,
+                        excludes: 'trivy-*'
+                }
+            }
+        }
+
+        stage('Push to Registry') {
+            when {
+                allOf {
+                    expression { return params.PUSH_IMAGE }
+                    anyOf {
+                        branch 'main'
+                        branch 'develop'
+                    }
+                }
+            }
+
+            steps {
+                script {
+                    echo "Pushing image to registry: ${DOCKER_REGISTRY}"
+
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'docker-registry-credentials',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )
+                    ]) {
+                        sh """
+                            echo \${DOCKER_PASS} | docker login ${DOCKER_REGISTRY} -u \${DOCKER_USER} --password-stdin
+
+                            docker tag ${IMAGE_NAME}:${IMAGE_TAG} \\
+                                ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+
+                            docker tag ${IMAGE_NAME}:${IMAGE_TAG} \\
+                                ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+
+                            docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                            docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+
+                            docker logout ${DOCKER_REGISTRY}
+                        """
+                    }
+                }
+            }
+
+            post {
+                success {
+                    echo "✓ Image pushed to registry successfully"
+                    echo "Pull command: docker pull ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+                }
+                failure {
+                    echo "✗ Failed to push image to registry"
+                }
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                script {
+                    echo "Cleaning up old images..."
+
+                    // Remove dangling images
+                    sh 'docker image prune -f || true'
+
+                    // Keep last 5 builds
+                    sh """
+                        docker images ${IMAGE_NAME} --format '{{.ID}}' | \\
+                            tail -n +6 | \\
+                            xargs -r docker rmi -f || true
+                    """
+                }
+            }
+
+            post {
+                always {
+                    echo "✓ Cleanup completed"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "========================================"
+            echo "Pipeline completed"
+            echo "Status: ${currentBuild.result ?: 'SUCCESS'}"
+            echo "Duration: ${currentBuild.durationString}"
+            echo "========================================"
+        }
+
+        success {
+            echo "✓ Pipeline completed successfully"
+
+            // Send success notification
+            script {
+                if (env.GIT_BRANCH == 'main') {
+                    emailext(
+                        subject: "✓ Build Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+                        body: """
+                            Build completed successfully!
+
+                            Job: ${env.JOB_NAME}
+                            Build: ${env.BUILD_NUMBER}
+                            Branch: ${env.GIT_BRANCH}
+                            Commit: ${env.GIT_COMMIT_SHORT}
+
+                            Image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+
+                            Pull command:
+                            docker pull ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+
+                            Build URL: ${env.BUILD_URL}
+                        """.stripIndent(),
+                        to: 'devops-team@example.com'
+                    )
+                }
+            }
+        }
+
+        failure {
+            echo "✗ Pipeline failed"
+
+            // Send failure notification
+            emailext(
+                subject: "✗ Build Failed: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+                body: """
+                    Build failed!
+
+                    Job: ${env.JOB_NAME}
+                    Build: ${env.BUILD_NUMBER}
+                    Branch: ${env.GIT_BRANCH}
+                    Commit: ${env.GIT_COMMIT_SHORT}
+
+                    Check the console output for details:
+                    ${env.BUILD_URL}console
+                """.stripIndent(),
+                to: 'devops-team@example.com'
+            )
+        }
+
+        unstable {
+            echo "⚠ Pipeline completed with warnings"
+        }
+
+        cleanup {
+            // Clean workspace but keep cache
+            cleanWs(
+                deleteDirs: true,
+                patterns: [
+                    [pattern: '.trivy-cache', type: 'EXCLUDE']
+                ]
+            )
+        }
+    }
+}
