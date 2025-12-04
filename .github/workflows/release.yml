@@ -1,0 +1,161 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      previous_version:
+        description: 'Previous version for changelog (e.g., 0.9.0)'
+        required: false
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
+      draft:
+        description: 'Create as draft'
+        type: boolean
+        default: true
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate version format
+        run: |
+          if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid version format. Use semver (e.g., 1.0.0)"
+            exit 1
+          fi
+          echo "✅ Version format valid: ${{ inputs.version }}"
+
+      - name: Check if tag exists
+        run: |
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "❌ Tag v${{ inputs.version }} already exists"
+            exit 1
+          fi
+          echo "✅ Tag v${{ inputs.version }} is available"
+
+      - name: Extract versions from Dockerfile
+        id: versions
+        run: |
+          echo "terraform_latest=$(grep 'ARG TERRAFORM_LATEST=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "terraform_prev=$(grep 'ARG TERRAFORM_PREV=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "python_latest=$(grep 'ARG PYTHON_LATEST=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "python_prev=$(grep 'ARG PYTHON_PREV=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "nodejs_latest=$(grep 'ARG NODEJS_LATEST=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "nodejs_prev=$(grep 'ARG NODEJS_PREV=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "rust_latest=$(grep 'ARG RUST_LATEST=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "rust_prev=$(grep 'ARG RUST_PREV=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "kubectl_latest=$(grep 'ARG KUBECTL_LATEST=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "kubectl_prev=$(grep 'ARG KUBECTL_PREV=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "helm_latest=$(grep 'ARG HELM_LATEST=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "helm_prev=$(grep 'ARG HELM_PREV=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "golang_latest=$(grep 'ARG GOLANG_LATEST=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "golang_prev=$(grep 'ARG GOLANG_PREV=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "packer_latest=$(grep 'ARG PACKER_LATEST=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+          echo "packer_prev=$(grep 'ARG PACKER_PREV=' Dockerfile | cut -d'=' -f2)" >> $GITHUB_OUTPUT
+
+      - name: Display extracted versions
+        run: |
+          echo "### 📦 Extracted Tool Versions" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tool | Latest | Previous |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform | ${{ steps.versions.outputs.terraform_latest }} | ${{ steps.versions.outputs.terraform_prev }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python | ${{ steps.versions.outputs.python_latest }} | ${{ steps.versions.outputs.python_prev }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Node.js | ${{ steps.versions.outputs.nodejs_latest }} | ${{ steps.versions.outputs.nodejs_prev }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Rust | ${{ steps.versions.outputs.rust_latest }} | ${{ steps.versions.outputs.rust_prev }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| kubectl | ${{ steps.versions.outputs.kubectl_latest }} | ${{ steps.versions.outputs.kubectl_prev }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Helm | ${{ steps.versions.outputs.helm_latest }} | ${{ steps.versions.outputs.helm_prev }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Go | ${{ steps.versions.outputs.golang_latest }} | ${{ steps.versions.outputs.golang_prev }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Packer | ${{ steps.versions.outputs.packer_latest }} | ${{ steps.versions.outputs.packer_prev }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate release notes
+        run: |
+          PREVIOUS="${{ inputs.previous_version }}"
+          VERSION="${{ inputs.version }}"
+
+          # Generate release notes from template
+          sed -e "s/{VERSION}/$VERSION/g" \
+              -e "s/{PREVIOUS}/$PREVIOUS/g" \
+              -e "s/{TERRAFORM_LATEST}/${{ steps.versions.outputs.terraform_latest }}/g" \
+              -e "s/{TERRAFORM_PREV}/${{ steps.versions.outputs.terraform_prev }}/g" \
+              -e "s/{PYTHON_LATEST}/${{ steps.versions.outputs.python_latest }}/g" \
+              -e "s/{PYTHON_PREV}/${{ steps.versions.outputs.python_prev }}/g" \
+              -e "s/{NODEJS_LATEST}/${{ steps.versions.outputs.nodejs_latest }}/g" \
+              -e "s/{NODEJS_PREV}/${{ steps.versions.outputs.nodejs_prev }}/g" \
+              -e "s/{RUST_LATEST}/${{ steps.versions.outputs.rust_latest }}/g" \
+              -e "s/{RUST_PREV}/${{ steps.versions.outputs.rust_prev }}/g" \
+              -e "s/{KUBECTL_LATEST}/${{ steps.versions.outputs.kubectl_latest }}/g" \
+              -e "s/{KUBECTL_PREV}/${{ steps.versions.outputs.kubectl_prev }}/g" \
+              -e "s/{HELM_LATEST}/${{ steps.versions.outputs.helm_latest }}/g" \
+              -e "s/{HELM_PREV}/${{ steps.versions.outputs.helm_prev }}/g" \
+              -e "s/{GOLANG_LATEST}/${{ steps.versions.outputs.golang_latest }}/g" \
+              -e "s/{GOLANG_PREV}/${{ steps.versions.outputs.golang_prev }}/g" \
+              -e "s/{PACKER_LATEST}/${{ steps.versions.outputs.packer_latest }}/g" \
+              -e "s/{PACKER_PREV}/${{ steps.versions.outputs.packer_prev }}/g" \
+              .github/release-template.md > release-notes.md
+
+          echo "✅ Release notes generated"
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+          echo "✅ Tag v${{ inputs.version }} created and pushed"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          name: DevTools Container v${{ inputs.version }}
+          body_path: release-notes.md
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate summary
+        run: |
+          echo "## 🎉 Release Created Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** v${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Draft:** ${{ inputs.draft }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-release:** ${{ inputs.prerelease }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📝 Next Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.draft }}" == "true" ]; then
+            echo "1. Review the draft release at: https://github.com/${{ github.repository }}/releases/tag/v${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "2. Edit the release notes to add 'What's New' and 'Breaking Changes'" >> $GITHUB_STEP_SUMMARY
+            echo "3. Publish the release when ready" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Release published at: https://github.com/${{ github.repository }}/releases/tag/v${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🐳 Docker Images:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Images will be available once the build workflow completes:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`docker pull v0rts/devtools:${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`docker pull ghcr.io/v0rts/devtools:${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload release notes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-v${{ inputs.version }}
+          path: release-notes.md
