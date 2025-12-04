@@ -2,6 +2,15 @@
 
 A secure, locked-down Docker container with **asdf** version management for DevOps and Infrastructure-as-Code tools.
 
+**Pre-built images available:**
+- Docker Hub: `v0rts/devtools:latest`
+- GitHub Container Registry: `ghcr.io/v0rts/devtools:latest`
+
+**CI/CD Pipelines:**
+- ✅ GitHub Actions (automated builds, security scans, multi-registry publishing)
+- ✅ GoCD (XML-based pipeline configuration)
+- ✅ Jenkins (Job DSL with declarative Jenkinsfile)
+
 ## Included Tools
 
 | Tool | Latest | Previous | Purpose |
@@ -28,11 +37,44 @@ A secure, locked-down Docker container with **asdf** version management for DevO
 
 ## Quick Start
 
+### Pull Pre-Built Image
+
+#### From Docker Hub
+```bash
+# Pull latest
+docker pull v0rts/devtools:latest
+
+# Run
+docker run -it --rm -v $(pwd):/home/tooluser/workspace v0rts/devtools:latest
+```
+
+#### From GitHub Container Registry
+```bash
+# Pull latest
+docker pull ghcr.io/v0rts/devtools:latest
+
+# Run
+docker run -it --rm -v $(pwd):/home/tooluser/workspace ghcr.io/v0rts/devtools:latest
+```
+
 ### Build the Container
 
+**Using the helper script:**
+```bash
+# Full build (includes previous versions)
+./devtools.sh build
+
+# Slim build (latest versions only, ~40% smaller)
+./devtools.sh build-slim
+```
+
+**Using Docker directly:**
 ```bash
 # Standard build
 docker build -t devtools:latest .
+
+# Slim build (skip previous versions)
+docker build -t devtools:latest --build-arg INSTALL_PREV_VERSIONS=false .
 
 # Build with custom versions
 docker build -t devtools:latest \
@@ -43,6 +85,25 @@ docker build -t devtools:latest \
 
 ### Run Interactively
 
+**Using the helper script:**
+```bash
+# Run with workspace mount and auto-detected credentials
+./devtools.sh run
+
+# Check installed versions
+./devtools.sh versions
+
+# Execute a single command
+./devtools.sh exec terraform version
+
+# Stop running container
+./devtools.sh stop
+
+# Clean up container and volumes
+./devtools.sh clean
+```
+
+**Using Docker directly:**
 ```bash
 # Basic usage
 docker run -it --rm \
@@ -196,13 +257,34 @@ docker build --build-arg USER_UID=$(id -u) -t devtools:latest .
 
 ```
 devtools-container/
-├── Dockerfile           # Main container definition
-├── docker-compose.yml   # Compose configuration
-├── README.md           # This file
-└── workspace/          # Your project files (mounted)
+├── Dockerfile                        # Main container definition
+├── devtools.sh                       # Helper script for build/run
+├── docker-compose.yml                # Compose configuration
+├── README.md                         # This file
+├── .github/
+│   └── workflows/
+│       ├── build.yml                 # GitHub Actions pipeline
+│       └── README.md                 # Workflow documentation
+├── GOCD/
+│   ├── gocd-pipeline.xml             # GoCD pipeline config
+│   └── GOCD-SETUP.md                 # GoCD setup guide
+├── Jenkins/
+│   ├── devtools-pipeline.groovy      # Jenkins Job DSL
+│   ├── Jenkinsfile                   # Declarative pipeline
+│   ├── JENKINS-SETUP.md              # Jenkins setup guide
+│   └── README.md                     # Quick reference
+├── Github/
+│   └── GITHUB-ACTIONS-SETUP.md       # GitHub Actions setup guide
+└── workspace/                        # Your project files (mounted)
 ```
 
 ## License
 
 MIT License - Use freely for your DevOps workflows.
-# devtools-container
+
+## Additional Documentation
+
+- **GitHub Actions Setup:** [Github/GITHUB-ACTIONS-SETUP.md](Github/GITHUB-ACTIONS-SETUP.md)
+- **GoCD Setup:** [GOCD/GOCD-SETUP.md](GOCD/GOCD-SETUP.md)
+- **Jenkins Setup:** [Jenkins/JENKINS-SETUP.md](Jenkins/JENKINS-SETUP.md)
+- **Workflow Reference:** [.github/workflows/README.md](.github/workflows/README.md)

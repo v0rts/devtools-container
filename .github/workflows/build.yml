@@ -227,7 +227,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
   publish:
-    name: Publish to GHCR
+    name: Publish to Docker Registries
     runs-on: ubuntu-latest
     needs: [build, security-scan, verify]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -263,6 +263,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Push to GitHub Container Registry
         run: |
           # Tag and push with build tag
@@ -273,18 +279,43 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
 
+      - name: Push to Docker Hub
+        run: |
+          # Tag for Docker Hub with build tag
+          docker tag ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }} \
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+
+          # Tag for Docker Hub as latest
+          docker tag ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }} \
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+          # Push to Docker Hub
+          docker push docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+          docker push docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
       - name: Generate deployment summary
         run: |
           echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image published to GitHub Container Registry**" >> $GITHUB_STEP_SUMMARY
+          echo "**Image published to multiple registries:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ GitHub Container Registry (GHCR)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Docker Hub" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Pull the image:" >> $GITHUB_STEP_SUMMARY
+          echo "### Pull from Docker Hub:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pull from GitHub Container Registry:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Run the container:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "docker run -it --rm -v \$(pwd):/home/tooluser/workspace ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker run -it --rm -v \$(pwd):/home/tooluser/workspace ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Image Tags:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`latest\` - Latest build from main branch" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ steps.set-tag.outputs.tag }}\` - This specific build" >> $GITHUB_STEP_SUMMARY
