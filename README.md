@@ -1,5 +1,8 @@
 # DevOps Tools Container
 
+![Latest Release](https://img.shields.io/github/v/release/v0rts/devtools-container)
+![Build Status](https://github.com/v0rts/devtools-container/actions/workflows/build.yml/badge.svg)
+
 A secure, locked-down Docker container with **asdf** version management for DevOps and Infrastructure-as-Code tools.
 
 **Pre-built images available:**
@@ -13,16 +16,18 @@ A secure, locked-down Docker container with **asdf** version management for DevO
 
 ## Included Tools
 
-| Tool | Latest | Previous | Purpose |
-|------|--------|----------|---------|
-| **Terraform** | 1.13.0 | 1.12.2 | Infrastructure as Code |
-| **Python** | 3.13.7 | 3.12.8 | Scripting, Ansible |
-| **Node.js** | 22.11.0 | 20.18.0 | JavaScript runtime, npm |
-| **Rust** | 1.91.1 | 1.90.0 | Systems programming |
-| **kubectl** | 1.34.0 | 1.33.0 | Kubernetes CLI |
-| **Helm** | 3.19.2 | 3.18.3 | Kubernetes package manager |
-| **Go** | 1.23.4 | 1.22.10 | Cloud tooling |
-| **Packer** | 1.11.2 | 1.10.3 | Image building |
+| Tool | Purpose |
+|------|---------|
+| **Terraform** | Infrastructure as Code |
+| **Python** | Scripting, Ansible |
+| **Node.js** | JavaScript runtime, npm |
+| **Rust** | Systems programming |
+| **kubectl** | Kubernetes CLI |
+| **Helm** | Kubernetes package manager |
+| **Go** | Cloud tooling |
+| **Packer** | Image building |
+
+**Version Information:** Each tool includes both latest and previous versions. See [Releases](https://github.com/v0rts/devtools-container/releases) for specific versions in each container release.
 
 ### Python Packages
 - ansible-core, ansible-lint
@@ -76,10 +81,10 @@ docker build -t devtools:latest .
 # Slim build (skip previous versions)
 docker build -t devtools:latest --build-arg INSTALL_PREV_VERSIONS=false .
 
-# Build with custom versions
+# Build with custom versions (see Dockerfile for available build args)
 docker build -t devtools:latest \
-  --build-arg TERRAFORM_LATEST=1.13.0 \
-  --build-arg PYTHON_LATEST=3.13.7 \
+  --build-arg TERRAFORM_LATEST=<version> \
+  --build-arg PYTHON_LATEST=<version> \
   .
 ```
 
