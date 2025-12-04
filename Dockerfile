@@ -180,9 +180,7 @@ RUN asdf install python ${PYTHON_LATEST} \
     && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install python ${PYTHON_PREV}; fi \
     && asdf global python ${PYTHON_LATEST} \
     && rm -rf ~/.asdf/downloads/* \
-    && find ~/.asdf/installs/python -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
-    && find ~/.asdf/installs/python -type d -name "test" -exec rm -rf {} + 2>/dev/null || true \
-    && find ~/.asdf/installs/python -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
+    && find ~/.asdf/installs/python -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # Node.js
 RUN asdf install nodejs ${NODEJS_LATEST} \
@@ -236,12 +234,14 @@ RUN pip install --upgrade pip --no-cache-dir \
     pre-commit \
     yamllint \
     checkov \
-    # Clean up pip cache and Python test files
+    # Clean up __pycache__ and bytecode only (preserve test modules for ansible)
     && find ~/.asdf/installs/python -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
-    && find ~/.asdf/installs/python -type d -name "test" -exec rm -rf {} + 2>/dev/null || true \
-    && find ~/.asdf/installs/python -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true \
     && find ~/.asdf/installs/python -type f -name "*.pyc" -delete 2>/dev/null || true \
-    && find ~/.asdf/installs/python -type f -name "*.pyo" -delete 2>/dev/null || true
+    && find ~/.asdf/installs/python -type f -name "*.pyo" -delete 2>/dev/null || true \
+    # Selectively remove large test suites (but NOT ansible.plugins.test)
+    && rm -rf ~/.asdf/installs/python/*/lib/python*/site-packages/numpy/*/tests 2>/dev/null || true \
+    && rm -rf ~/.asdf/installs/python/*/lib/python*/site-packages/scipy/*/tests 2>/dev/null || true \
+    && rm -rf ~/.asdf/installs/python/*/lib/python*/site-packages/pandas/tests 2>/dev/null || true
 
 # =============================================================================
 # Install Node.js-based Tools
