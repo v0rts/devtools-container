@@ -166,45 +166,61 @@ RUN asdf plugin add terraform https://github.com/asdf-community/asdf-hashicorp.g
 # Install Tool Versions
 # =============================================================================
 
+# Option to skip previous versions (saves ~40% space)
+ARG INSTALL_PREV_VERSIONS=true
+
 # Terraform
 RUN asdf install terraform ${TERRAFORM_LATEST} \
-    && asdf install terraform ${TERRAFORM_PREV} \
-    && asdf global terraform ${TERRAFORM_LATEST}
+    && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install terraform ${TERRAFORM_PREV}; fi \
+    && asdf global terraform ${TERRAFORM_LATEST} \
+    && rm -rf ~/.asdf/downloads/*
 
 # Python (takes a while to compile)
 RUN asdf install python ${PYTHON_LATEST} \
-    && asdf install python ${PYTHON_PREV} \
-    && asdf global python ${PYTHON_LATEST}
+    && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install python ${PYTHON_PREV}; fi \
+    && asdf global python ${PYTHON_LATEST} \
+    && rm -rf ~/.asdf/downloads/* \
+    && find ~/.asdf/installs/python -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find ~/.asdf/installs/python -type d -name "test" -exec rm -rf {} + 2>/dev/null || true \
+    && find ~/.asdf/installs/python -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
 
 # Node.js
 RUN asdf install nodejs ${NODEJS_LATEST} \
-    && asdf install nodejs ${NODEJS_PREV} \
-    && asdf global nodejs ${NODEJS_LATEST}
+    && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install nodejs ${NODEJS_PREV}; fi \
+    && asdf global nodejs ${NODEJS_LATEST} \
+    && rm -rf ~/.asdf/downloads/* \
+    && npm cache clean --force
 
 # Rust
 RUN asdf install rust ${RUST_LATEST} \
-    && asdf install rust ${RUST_PREV} \
-    && asdf global rust ${RUST_LATEST}
+    && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install rust ${RUST_PREV}; fi \
+    && asdf global rust ${RUST_LATEST} \
+    && rm -rf ~/.asdf/downloads/*
 
 # kubectl
 RUN asdf install kubectl ${KUBECTL_LATEST} \
-    && asdf install kubectl ${KUBECTL_PREV} \
-    && asdf global kubectl ${KUBECTL_LATEST}
+    && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install kubectl ${KUBECTL_PREV}; fi \
+    && asdf global kubectl ${KUBECTL_LATEST} \
+    && rm -rf ~/.asdf/downloads/*
 
 # Helm
 RUN asdf install helm ${HELM_LATEST} \
-    && asdf install helm ${HELM_PREV} \
-    && asdf global helm ${HELM_LATEST}
+    && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install helm ${HELM_PREV}; fi \
+    && asdf global helm ${HELM_LATEST} \
+    && rm -rf ~/.asdf/downloads/*
 
 # Go
 RUN asdf install golang ${GOLANG_LATEST} \
-    && asdf install golang ${GOLANG_PREV} \
-    && asdf global golang ${GOLANG_LATEST}
+    && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install golang ${GOLANG_PREV}; fi \
+    && asdf global golang ${GOLANG_LATEST} \
+    && rm -rf ~/.asdf/downloads/* \
+    && go clean -cache -modcache 2>/dev/null || true
 
 # Packer
 RUN asdf install packer ${PACKER_LATEST} \
-    && asdf install packer ${PACKER_PREV} \
-    && asdf global packer ${PACKER_LATEST}
+    && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install packer ${PACKER_PREV}; fi \
+    && asdf global packer ${PACKER_LATEST} \
+    && rm -rf ~/.asdf/downloads/*
 
 # =============================================================================
 # Install Python-based Tools (Ansible, AWS CLI, etc.)
@@ -219,7 +235,13 @@ RUN pip install --upgrade pip --no-cache-dir \
     boto3 \
     pre-commit \
     yamllint \
-    checkov
+    checkov \
+    # Clean up pip cache and Python test files
+    && find ~/.asdf/installs/python -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find ~/.asdf/installs/python -type d -name "test" -exec rm -rf {} + 2>/dev/null || true \
+    && find ~/.asdf/installs/python -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true \
+    && find ~/.asdf/installs/python -type f -name "*.pyc" -delete 2>/dev/null || true \
+    && find ~/.asdf/installs/python -type f -name "*.pyo" -delete 2>/dev/null || true
 
 # =============================================================================
 # Install Node.js-based Tools

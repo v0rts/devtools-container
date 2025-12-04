@@ -20,6 +20,7 @@ Usage: $(basename "$0") [command] [options]
 
 Commands:
     build       Build the container image
+    build-slim  Build smaller image (skip previous versions, ~40% smaller)
     run         Run the container interactively (default)
     exec        Execute a command in running container
     shell       Start a shell in running container
@@ -59,6 +60,14 @@ build() {
     log_info "Building ${IMAGE_NAME}..."
     docker build -t "${IMAGE_NAME}" "$(dirname "$0")"
     log_info "Build complete!"
+}
+
+build_slim() {
+    log_info "Building ${IMAGE_NAME} (slim - no previous versions)..."
+    docker build -t "${IMAGE_NAME}" \
+        --build-arg INSTALL_PREV_VERSIONS=false \
+        "$(dirname "$0")"
+    log_info "Slim build complete! (~40% smaller than full build)"
 }
 
 run_container() {
@@ -146,6 +155,9 @@ clean() {
 case "${1:-run}" in
     build)
         build
+        ;;
+    build-slim)
+        build_slim
         ;;
     run)
         shift 2>/dev/null || true
