@@ -43,6 +43,46 @@ The workflow uses `GITHUB_TOKEN` with these permissions:
 
 These are automatically provided by GitHub Actions.
 
+## Docker Hub Configuration (Optional)
+
+To publish images to Docker Hub in addition to GitHub Container Registry:
+
+### Setup Steps
+
+1. **Create Docker Hub Access Token:**
+   - Login to [Docker Hub](https://hub.docker.com)
+   - Go to **Account Settings** → **Security** → **Access Tokens**
+   - Click **New Access Token**
+   - Name: `github-actions-devtools`
+   - Permissions: **Read & Write**
+   - Click **Generate** and copy the token (shown only once)
+
+2. **Add Secrets to GitHub Repository:**
+   - Go to your repository **Settings** → **Secrets and variables** → **Actions**
+   - Click **New repository secret**
+   - Add `DOCKERHUB_USERNAME`:
+     - Name: `DOCKERHUB_USERNAME`
+     - Value: `v0rts` (your Docker Hub username)
+   - Add `DOCKERHUB_TOKEN`:
+     - Name: `DOCKERHUB_TOKEN`
+     - Value: [paste the access token from step 1]
+
+3. **Create Repository on Docker Hub:**
+   - Go to https://hub.docker.com/repository/create
+   - Repository name: `devtools`
+   - Visibility: **Public** (or Private if preferred)
+   - Click **Create**
+
+4. **Update Workflow:**
+   - See [Publish to Docker Hub Instead](#publish-to-docker-hub-instead) in Customization section below
+
+### Verify Configuration
+
+Test authentication locally:
+```bash
+echo $DOCKERHUB_TOKEN | docker login -u $DOCKERHUB_USERNAME --password-stdin
+```
+
 ## Features
 
 ### 🏗️ Build Stage
@@ -116,8 +156,18 @@ Security reports are saved as artifacts:
 
 ### Pull the Image
 
-After the workflow publishes to GHCR:
+After the workflow publishes:
 
+**From Docker Hub:**
+```bash
+# Pull the latest image
+docker pull v0rts/devtools:latest
+
+# Run the container
+docker run -it --rm -v $(pwd):/home/tooluser/workspace v0rts/devtools:latest
+```
+
+**From GitHub Container Registry:**
 ```bash
 # Authenticate with GHCR (one-time setup)
 echo $GITHUB_TOKEN | docker login ghcr.io -u YOUR_USERNAME --password-stdin
@@ -160,9 +210,9 @@ Add new steps to the `verify` job:
       bash -c 'YOUR_COMMAND_HERE'
 ```
 
-### Publish to Docker Hub Instead
+### Publish to Docker Hub (In Addition to GHCR)
 
-Replace GHCR login with Docker Hub:
+Add Docker Hub login to the `publish` job after the GHCR login:
 
 ```yaml
 - name: Log in to Docker Hub
@@ -172,7 +222,39 @@ Replace GHCR login with Docker Hub:
     password: ${{ secrets.DOCKERHUB_TOKEN }}
 ```
 
-Then add secrets in **Settings** > **Secrets and variables** > **Actions**.
+Update the metadata step to include both registries:
+
+```yaml
+- name: Extract metadata (tags, labels)
+  id: meta
+  uses: docker/metadata-action@v5
+  with:
+    images: |
+      ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+      docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+    tags: |
+      type=raw,value=${{ steps.set-tag.outputs.tag }}
+      type=raw,value=latest,enable={{is_default_branch}}
+```
+
+Add push commands for Docker Hub after the GHCR push:
+
+```yaml
+- name: Push to Docker Hub
+  run: |
+    # Tag for Docker Hub
+    docker tag ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }} \
+      docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+
+    docker tag ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }} \
+      docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+    # Push to Docker Hub
+    docker push docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+    docker push docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+```
+
+See [Docker Hub Configuration](#docker-hub-configuration-optional) for setup instructions.
 
 ### Enable Branch Protection
 
