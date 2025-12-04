@@ -40,7 +40,6 @@ The pipeline runs on:
 The workflow uses `GITHUB_TOKEN` with these permissions:
 - `contents: read` - Read repository code
 - `packages: write` - Push to GitHub Container Registry
-- `security-events: write` - Upload security scan results
 
 These are automatically provided by GitHub Actions.
 
@@ -55,11 +54,10 @@ These are automatically provided by GitHub Actions.
   - `latest` (for main branch only)
 
 ### 🔒 Security Scan Stage
-- Scans for CRITICAL and HIGH vulnerabilities
-- Uploads results to **GitHub Security** tab
-- Generates both SARIF and JSON reports
-- Shows summary in workflow output
-- Stores reports as artifacts (downloadable for 90 days)
+- Scans for CRITICAL, HIGH, and MEDIUM vulnerabilities
+- Generates JSON report with detailed findings
+- Shows summary table in workflow output
+- Stores report as artifact (downloadable for 90 days)
 
 ### ✅ Verify Stage
 - Tests container starts successfully
@@ -89,9 +87,13 @@ Replace `YOUR_USERNAME` with your GitHub username.
 
 ### Security Scan Results
 
-1. Go to **Security** tab in your repository
-2. Click **Code scanning alerts**
-3. View Trivy vulnerability reports
+View scan results in workflow logs:
+1. Go to **Actions** tab
+2. Click on a workflow run
+3. Open the **security-scan** job
+4. View the Trivy table output in logs
+
+Download detailed reports from artifacts (see below).
 
 ### Job Summaries
 
@@ -294,5 +296,6 @@ Add steps to push to both GHCR and Docker Hub in the publish job.
 1. Push this repository to GitHub
 2. Verify the workflow runs automatically
 3. Check the **Actions** tab for results
-4. Review security findings in **Security** tab
-5. Pull and test the published image from GHCR
+4. Review security scan results in workflow logs
+5. Download and review the security report artifact
+6. Pull and test the published image from GHCR
