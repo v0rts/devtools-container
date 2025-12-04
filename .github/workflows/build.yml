@@ -133,6 +133,8 @@ jobs:
           format: 'table'
           severity: 'CRITICAL,HIGH,MEDIUM'
           exit-code: '0'
+          timeout: '15m0s'
+          scanners: 'vuln'
 
       - name: Generate detailed JSON report
         uses: aquasecurity/trivy-action@master
@@ -142,6 +144,8 @@ jobs:
           output: 'trivy-results.json'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
           exit-code: '0'
+          timeout: '15m0s'
+          scanners: 'vuln'
 
       - name: Upload Trivy report artifact
         uses: actions/upload-artifact@v4

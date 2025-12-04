@@ -187,13 +187,17 @@ RUN asdf install nodejs ${NODEJS_LATEST} \
     && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install nodejs ${NODEJS_PREV}; fi \
     && asdf global nodejs ${NODEJS_LATEST} \
     && rm -rf ~/.asdf/downloads/* \
-    && npm cache clean --force
+    && npm cache clean --force \
+    && rm -rf ~/.asdf/installs/nodejs/*/share/doc 2>/dev/null || true \
+    && rm -rf ~/.asdf/installs/nodejs/*/share/man 2>/dev/null || true
 
 # Rust
 RUN asdf install rust ${RUST_LATEST} \
     && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install rust ${RUST_PREV}; fi \
     && asdf global rust ${RUST_LATEST} \
-    && rm -rf ~/.asdf/downloads/*
+    && rm -rf ~/.asdf/downloads/* \
+    && rm -rf ~/.asdf/installs/rust/*/share/doc 2>/dev/null || true \
+    && rm -rf ~/.asdf/installs/rust/*/share/man 2>/dev/null || true
 
 # kubectl
 RUN asdf install kubectl ${KUBECTL_LATEST} \
@@ -212,7 +216,9 @@ RUN asdf install golang ${GOLANG_LATEST} \
     && if [ "$INSTALL_PREV_VERSIONS" = "true" ]; then asdf install golang ${GOLANG_PREV}; fi \
     && asdf global golang ${GOLANG_LATEST} \
     && rm -rf ~/.asdf/downloads/* \
-    && go clean -cache -modcache 2>/dev/null || true
+    && go clean -cache -modcache 2>/dev/null || true \
+    && rm -rf ~/.asdf/installs/golang/*/share/doc 2>/dev/null || true \
+    && rm -rf ~/.asdf/installs/golang/*/share/man 2>/dev/null || true
 
 # Packer
 RUN asdf install packer ${PACKER_LATEST} \
@@ -250,7 +256,8 @@ RUN npm install -g --no-fund --no-audit \
     npm@latest \
     yarn \
     typescript \
-    cdktf-cli
+    cdktf-cli \
+    && npm cache clean --force
 
 # =============================================================================
 # Create .tool-versions file for project-level version management
@@ -263,6 +270,15 @@ RUN echo "terraform ${TERRAFORM_LATEST}" > ~/.tool-versions \
     && echo "helm ${HELM_LATEST}" >> ~/.tool-versions \
     && echo "golang ${GOLANG_LATEST}" >> ~/.tool-versions \
     && echo "packer ${PACKER_LATEST}" >> ~/.tool-versions
+
+# =============================================================================
+# Final Cleanup - Remove docs and unnecessary files
+# =============================================================================
+RUN find ~/.asdf/installs -type d -name "doc" -exec rm -rf {} + 2>/dev/null || true \
+    && find ~/.asdf/installs -type d -name "man" -exec rm -rf {} + 2>/dev/null || true \
+    && find ~/.asdf/installs -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true \
+    && find ~/.asdf/installs -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true \
+    && find ~/.asdf/installs -type d -name "samples" -exec rm -rf {} + 2>/dev/null || true
 
 # =============================================================================
 # Security Hardening
