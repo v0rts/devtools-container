@@ -1,7 +1,20 @@
 # DevOps Tools Container
 
-![Latest Release](https://img.shields.io/github/v/release/v0rts/devtools-container)
-![Build Status](https://github.com/v0rts/devtools-container/actions/workflows/build.yml/badge.svg)
+<!-- Build & Release Status -->
+[![Build Status](https://github.com/v0rts/devtools-container/actions/workflows/build.yml/badge.svg)](https://github.com/v0rts/devtools-container/actions/workflows/build.yml)
+[![Latest Release](https://img.shields.io/github/v/release/v0rts/devtools-container)](https://github.com/v0rts/devtools-container/releases)
+[![License](https://img.shields.io/github/license/v0rts/devtools-container)](LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/v0rts/devtools-container)](https://github.com/v0rts/devtools-container/commits/main)
+[![Maintenance](https://img.shields.io/maintenance/yes/2024)](https://github.com/v0rts/devtools-container)
+
+<!-- Docker Images -->
+[![Docker Hub](https://img.shields.io/badge/docker%20hub-v0rts/devtools-blue?logo=docker)](https://hub.docker.com/r/v0rts/devtools)
+[![Docker Pulls](https://img.shields.io/docker/pulls/v0rts/devtools)](https://hub.docker.com/r/v0rts/devtools)
+[![Image Size](https://img.shields.io/docker/image-size/v0rts/devtools/latest)](https://hub.docker.com/r/v0rts/devtools)
+[![GHCR](https://img.shields.io/badge/ghcr-devtools-blue?logo=github)](https://github.com/v0rts/devtools-container/pkgs/container/devtools)
+
+<!-- Security -->
+[![Security Scan](https://img.shields.io/badge/security-trivy-blue)](https://github.com/v0rts/devtools-container/actions/workflows/build.yml)
 
 A secure, locked-down Docker container with **asdf** version management for DevOps and Infrastructure-as-Code tools.
 
